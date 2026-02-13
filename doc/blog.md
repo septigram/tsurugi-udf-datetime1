@@ -20,6 +20,12 @@ Tsurugi 1.8.0 では、複数の値を返せないなどの制約はあるもの
 
 .proto では、TIMESTAMP（デフォルト TZ）用・TIMESTAMP（タイムゾーン指定）用・TIMESTAMP WITH TIME ZONE 用・DATE 用・TIME 用の 5 系統に分け、合計 37 個の RPC を定義しました。戻り値は `Int32Value` または `Int64Value`（EPOCH ミリ秒用）でラップします。
 
+### 構成
+
+構成は非常にシンプルです。
+
+![構成図](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/tsurugi-udf-datetime1.png)
+
 ### 実装
 
 - **技術スタック**: Java 17、Spring Boot 3.x、Gradle 8.x、grpc-spring-boot-starter（または grpc-java）、Protocol Buffers。
