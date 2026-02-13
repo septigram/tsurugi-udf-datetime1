@@ -1,6 +1,6 @@
 # Tsurugi の UDF サーバを Spring Boot で作成する
 
-次世代 RDB [劔"Tsurugi"](https://www.tsurugidb.com/) は v1.8.0 で UDF（User-Defined Function）に対応しました。Tsurugi のUDF は gRPC サーバとして実装するだけで SQL から呼び出せるため、他 DBMS の UDF に比べて実装が容易です。本記事では、Tsurugi に不足している日付・時刻のコンポーネント取得関数（年・月・日・曜日・週番号・時・分・秒・ミリ秒など）を、Spring Boot と gRPC で実装した事例を紹介します。
+次世代 RDB [劔"Tsurugi"](https://www.tsurugidb.com/) は v1.8.0 で [UDF（User-Defined Function）](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-overview_ja.md) に対応しました。Tsurugi の UDF は gRPC サーバとして実装するだけで SQL から呼び出せるため、他 DBMS の UDF に比べて実装が容易です。本記事では、Tsurugi に不足している日付・時刻のコンポーネント取得関数（年・月・日・曜日・週番号・時・分・秒・ミリ秒など）を、Spring Boot と gRPC で実装した事例を紹介します。
 
 ## 背景
 
@@ -12,11 +12,11 @@ Tsurugi 1.8.0 では、複数の値を返せないなどの制約はあるもの
 
 ### 要件と設計
 
-要件は [doc/requirements.md](requirements.md) にまとめ、設計は [doc/design.md](design.md) に記載しています。主なポイントは次のとおりです。
+要件は [doc/requirements.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/requirements.md) にまとめ、設計は [doc/design.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/design.md) に記載しています。主なポイントは次のとおりです。
 
 - **アーキテクチャ**: Tsurugi の UDF プラグインが gRPC クライアントとなり、本アプリ（gRPC サーバ）に Unary RPC でリクエストを送り、戻り値を UDF の結果として利用する。
 - **Tsurugi UDF の制約**: 各 RPC のレスポンスは「1 フィールドのみの message」にすること。`optional` が使えないため、タイムゾーン省略版と指定版は別名の RPC（例: `TimestampYear` と `TimestampYearTz`）で分ける。
-- **型**: 日付・時刻型は Tsurugi 公式の [tsurugi_types.proto](tsurugi-manual/tsurugi_types.proto) を import して利用する（`Date`, `LocalTime`, `LocalDatetime`, `OffsetDatetime` など）。
+- **型**: 日付・時刻型は Tsurugi 公式の [tsurugi_types.proto](https://github.com/project-tsurugi/tsurugi-udf/blob/master/proto/tsurugidb/udf/tsurugi_types.proto) を import して利用する（`Date`, `LocalTime`, `LocalDatetime`, `OffsetDatetime` など）。
 
 .proto では、TIMESTAMP（デフォルト TZ）用・TIMESTAMP（タイムゾーン指定）用・TIMESTAMP WITH TIME ZONE 用・DATE 用・TIME 用の 5 系統に分け、合計 37 個の RPC を定義しました。戻り値は `Int32Value` または `Int64Value`（EPOCH ミリ秒用）でラップします。
 
@@ -38,9 +38,11 @@ Tsurugi 側で UDF を利用するには、本プロジェクトの .proto と `
 $ udf-plugin-builder --proto-file datetime-service.proto tsurugidb/udf/tsurugi_types.proto
 ```
 
+udf-plugin-builderについては[公式のドキュメント](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-plugin_ja.md)を参考にしてください。
+
 ### 結合テスト
 
-gRPC サーバの起動確認に加え、udf-plugin を Tsurugi にデプロイし、tgsql から全 37 UDF を実行して期待値と一致することを [doc/test-result.md](test-result.md) のとおり確認しました。全呼び出し例は [doc/test-all.sql](test-all.sql) にあります。
+gRPC サーバの起動確認に加え、udf-plugin を Tsurugi にデプロイし、tgsql から全 37 UDF を実行して期待値と一致することを [doc/test-result.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/test-result.md) のとおり確認しました。全呼び出し例は [doc/test-all.sql](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/test-all.sql) にあります。
 
 ## 利用例
 
@@ -109,10 +111,10 @@ Time: 1.888 ms
 
 ## 成果物
 
-- 本リポジトリ: `tsurugi-udf-datetime1`（Spring Boot アプリ、proto、コンバータ・gRPC サービス実装、単体・結合テスト手順）
-- 設計・要件: [doc/design.md](design.md)、[doc/requirements.md](requirements.md)
-- 結合テスト結果: [doc/test-result.md](test-result.md)、[doc/test-all.sql](test-all.sql)
+- [リポジトリ](https://github.com/septigram/tsurugi-udf-datetime1)
 
 ## まとめ
 
 Tsurugi の UDF は gRPC サーバを用意するだけで SQL から呼び出せるため、Spring Boot と gRPC で日付・時刻のコンポーネント取得関数を実装しました。.proto で Tsurugi の制約（レスポンス 1 フィールド、optional 非対応）に合わせ、`tsurugi_types.proto` の型を利用することで、Tsurugi と整合した UDF サーバを比較的少ない手間で構築できました。同様の手順で、他のドメインの UDF も追加しやすい構成になっています。
+
+実は週番号でGROUP BYしたくて開発したのですが、Tsurugi v1.8.0の時点ではユーザー定義集計関数（UDAF）に未対応ということで使えませんでした。開発計画はあるようなので、実装を待ちたいと思います。
