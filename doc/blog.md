@@ -24,7 +24,7 @@ Tsurugi 1.8.0 では、複数の値を返せないなどの制約はあるもの
 
 構成は非常にシンプルです。
 
-![構成図](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/tsurugi-udf-datetime1.png)
+![構成図](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/tsurugi-udf-datetime1.png?raw=true)
 
 ### 実装
 
