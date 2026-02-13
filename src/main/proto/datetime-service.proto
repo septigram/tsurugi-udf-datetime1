@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+import "tsurugidb/udf/tsurugi_types.proto";
+
+option java_package = "jp.septigram.tsurugi.udf.datetime1";
+
+// Tsurugi UDF 日時コンポーネント取得サービス
+service DateTimeService {
+  // TIMESTAMP (LocalDatetime) - システムデフォルトタイムゾーン
+  rpc TimestampYear (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampMonth (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampDay (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampDayOfWeek (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampWeekOfYear (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampHour (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampMinute (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampSecond (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampMillisecond (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampEpochMilli (TimestampRequest) returns (Int64Value) {}
+
+  // TIMESTAMP (LocalDatetime) - タイムゾーン指定
+  rpc TimestampYearTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampMonthTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampDayTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampDayOfWeekTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampWeekOfYearTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampHourTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampMinuteTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampSecondTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampMillisecondTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampEpochMilliTz (TimestampWithTzRequest) returns (Int64Value) {}
+
+  // TIMESTAMP WITH TIME ZONE (OffsetDatetime)
+  rpc OffsetTimestampYear (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampMonth (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampDay (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampDayOfWeek (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampWeekOfYear (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampHour (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampMinute (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampSecond (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampMillisecond (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampEpochMilli (OffsetTimestampRequest) returns (Int64Value) {}
+
+  // DATE (Date)
+  rpc DateYear (DateRequest) returns (Int32Value) {}
+  rpc DateMonth (DateRequest) returns (Int32Value) {}
+  rpc DateDay (DateRequest) returns (Int32Value) {}
+  rpc DateDayOfWeek (DateRequest) returns (Int32Value) {}
+  rpc DateWeekOfYear (DateRequest) returns (Int32Value) {}
+
+  // TIME (LocalTime)
+  rpc TimeHour (TimeRequest) returns (Int32Value) {}
+  rpc TimeMinute (TimeRequest) returns (Int32Value) {}
+  rpc TimeSecond (TimeRequest) returns (Int32Value) {}
+  rpc TimeMillisecond (TimeRequest) returns (Int32Value) {}
+}
+
+// 共通レスポンス型
+message Int32Value {
+  int32 value = 1;
+}
+message Int64Value {
+  int64 value = 1;
+}
+
+// リクエスト型
+message TimestampRequest {
+  tsurugidb.udf.LocalDatetime value = 1;
+}
+
+message TimestampWithTzRequest {
+  tsurugidb.udf.LocalDatetime value = 1;
+  string time_zone = 2;
+}
+
+message OffsetTimestampRequest {
+  tsurugidb.udf.OffsetDatetime value = 1;
+}
+
+message DateRequest {
+  tsurugidb.udf.Date value = 1;
+}
+
+message TimeRequest {
+  tsurugidb.udf.LocalTime value = 1;
+}

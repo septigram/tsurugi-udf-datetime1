@@ -1,0 +1,5 @@
+# Spring の設定ファイル
+# gRPC サーバのポート（Tsurugi UDF プラグインの endpoint と合わせる）
+grpc:
+  server:
+    port: 50051

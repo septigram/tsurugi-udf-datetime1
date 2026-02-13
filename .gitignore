@@ -1,0 +1,50 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# Spring Boot
+spring-boot-devtools.properties
+
+# Protobuf / gRPC generated (optional: 生成物を無視する場合)
+# build/generated/
+
+# Local configuration
+local.properties
+*.local
+.env
+.env.local
+.env.*.local
+
+# Test / Report outputs (Gradle の build に含まれるが明示)
+# build/reports/
+# build/test-results/
+
+# Out (Eclipse default output)
+out/
+
+tsurugi-manual/
