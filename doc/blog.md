@@ -4,11 +4,35 @@
 
 ## 背景
 
+### UDFとは
+
 一般に SQL の UDF は、標準の SQL 関数では対応できない計算やロジックを、ユーザーが独自に定義し SQL 文の中で再利用するための機能です。スカラー値やテーブル関数として定義でき、データクレンジングやビジネスロジックの共通化に役立ちます。
 
-Tsurugi 1.8.0 では、複数の値を返せないなどの制約はあるものの UDF が利用可能になりました。プロトコルは gRPC で、サーバ側を実装するだけで SQL から呼び出せます。そこで、DATE / TIME / TIMESTAMP / TIMESTAMP WITH TIME ZONE から「年」「月」「曜日」「週番号」「時」「分」「秒」「ミリ秒」などを取り出す関数群を、Spring Boot アプリとして gRPC サーバ化しました。
+### PostgreSQL の UDF
+
+例えば PostgreSQL の UDF を作成する場合、C で書いたコードを実行環境に合わせて共有ライブラリ（.so）にビルドし、`CREATE FUNCTION` で登録するとサーバがオンデマンドで動的ロードする形で利用します。同じプロセス内で動作するため、PostgreSQL の挙動に影響しないようメモリ管理（palloc/pfree）やスレッド安全性に配慮する必要があり、実装の難易度は高くなります。
+
+### Tsurugi の UDF
+
+Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せないなどの制約はあるものの実行プロセスを gRPC で分離することで、従来の UDF の困難さを回避する設計になっています。SQL から呼び出す関数を gRPC で定義すれば、Tsurugi 側の呼び出し処理を組み込んだ共有ライブラリを自動生成できます。
+
+開発者は定義通りに gRPC サーバ側を実装するだけで、Tsurugi からの安全な UDF 呼び出しを実現できます。
+
+### Tsurugi UDF の作例
+
+今回の作例では、Tsurugi 1.8.0 時点では提供されていない DATE / TIME / TIMESTAMP / TIMESTAMP WITH TIME ZONE のコンポーネント（年・月・曜日・週番号・時・分・秒・ミリ秒など）を取り出す関数群を、Spring Boot アプリとして gRPC サーバ化しました。
 
 ## 開発手順
+
+### 全体の流れ
+
+1. 要件を策定
+2. gRPC定義(proto ファイル)を作成
+3. proto ファイルを元に gRPC サーバを Spring boot で実装
+4. 実装した gRPC サーバを起動
+5. Tsurugi 側共有ライブラリを proto ファイルから生成
+6. Tsurugi に共有ライブラリを組み込んで起動
+7. UDF を呼び出す SQL を実行して動作確認
 
 ### 要件と設計
 
@@ -18,13 +42,112 @@ Tsurugi 1.8.0 では、複数の値を返せないなどの制約はあるもの
 - **Tsurugi UDF の制約**: 各 RPC のレスポンスは「1 フィールドのみの message」にすること。`optional` が使えないため、タイムゾーン省略版と指定版は別名の RPC（例: `TimestampYear` と `TimestampYearTz`）で分ける。
 - **型**: 日付・時刻型は Tsurugi 公式の [tsurugi_types.proto](https://github.com/project-tsurugi/tsurugi-udf/blob/master/proto/tsurugidb/udf/tsurugi_types.proto) を import して利用する（`Date`, `LocalTime`, `LocalDatetime`, `OffsetDatetime` など）。
 
-.proto では、TIMESTAMP（デフォルト TZ）用・TIMESTAMP（タイムゾーン指定）用・TIMESTAMP WITH TIME ZONE 用・DATE 用・TIME 用の 5 系統に分け、合計 37 個の RPC を定義しました。戻り値は `Int32Value` または `Int64Value`（EPOCH ミリ秒用）でラップします。
+本プロジェクトの .proto では、TIMESTAMP（デフォルト TZ）用・TIMESTAMP（タイムゾーン指定）用・TIMESTAMP WITH TIME ZONE 用・DATE 用・TIME 用の 5 系統に分け、合計 37 個の RPC を定義しています。戻り値は `Int32Value` または `Int64Value`（EPOCH ミリ秒用）でラップします。
+
+```proto
+syntax = "proto3";
+
+import "tsurugidb/udf/tsurugi_types.proto";
+
+option java_package = "jp.septigram.tsurugi.udf.datetime1";
+
+// Tsurugi UDF 日時コンポーネント取得サービス
+service DateTimeService {
+  // TIMESTAMP (LocalDatetime) - システムデフォルトタイムゾーン
+  rpc TimestampYear (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampMonth (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampDay (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampDayOfWeek (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampWeekOfYear (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampHour (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampMinute (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampSecond (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampMillisecond (TimestampRequest) returns (Int32Value) {}
+  rpc TimestampEpochMilli (TimestampRequest) returns (Int64Value) {}
+
+  // TIMESTAMP (LocalDatetime) - タイムゾーン指定
+  rpc TimestampYearTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampMonthTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampDayTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampDayOfWeekTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampWeekOfYearTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampHourTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampMinuteTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampSecondTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampMillisecondTz (TimestampWithTzRequest) returns (Int32Value) {}
+  rpc TimestampEpochMilliTz (TimestampWithTzRequest) returns (Int64Value) {}
+
+  // TIMESTAMP WITH TIME ZONE (OffsetDatetime)
+  rpc OffsetTimestampYear (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampMonth (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampDay (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampDayOfWeek (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampWeekOfYear (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampHour (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampMinute (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampSecond (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampMillisecond (OffsetTimestampRequest) returns (Int32Value) {}
+  rpc OffsetTimestampEpochMilli (OffsetTimestampRequest) returns (Int64Value) {}
+
+  // DATE (Date)
+  rpc DateYear (DateRequest) returns (Int32Value) {}
+  rpc DateMonth (DateRequest) returns (Int32Value) {}
+  rpc DateDay (DateRequest) returns (Int32Value) {}
+  rpc DateDayOfWeek (DateRequest) returns (Int32Value) {}
+  rpc DateWeekOfYear (DateRequest) returns (Int32Value) {}
+
+  // TIME (LocalTime)
+  rpc TimeHour (TimeRequest) returns (Int32Value) {}
+  rpc TimeMinute (TimeRequest) returns (Int32Value) {}
+  rpc TimeSecond (TimeRequest) returns (Int32Value) {}
+  rpc TimeMillisecond (TimeRequest) returns (Int32Value) {}
+}
+
+// 共通レスポンス型
+message Int32Value {
+  int32 value = 1;
+}
+message Int64Value {
+  int64 value = 1;
+}
+
+// リクエスト型
+message TimestampRequest {
+  tsurugidb.udf.LocalDatetime value = 1;
+}
+
+message TimestampWithTzRequest {
+  tsurugidb.udf.LocalDatetime value = 1;
+  string time_zone = 2;
+}
+
+message OffsetTimestampRequest {
+  tsurugidb.udf.OffsetDatetime value = 1;
+}
+
+message DateRequest {
+  tsurugidb.udf.Date value = 1;
+}
+
+message TimeRequest {
+  tsurugidb.udf.LocalTime value = 1;
+}
+
+```
+
 
 ### 構成
 
 構成は非常にシンプルです。
 
-![構成図](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/tsurugi-udf-datetime1.png?raw=true)
+![構成図](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/542190/15e04b18-33c3-4c4d-837d-ee1a4f9c00b5.png)
+
+モジュール|説明
+-|-
+Tsurugi DB|データベース
+libdatetime-service.ini|UDF設定ファイル
+libdatetime-service.so|UDF共有ライブラリ
+tsurugi-udf-datetime1|UDFサーバ
 
 ### 実装
 
@@ -32,19 +155,19 @@ Tsurugi 1.8.0 では、複数の値を返せないなどの制約はあるもの
 - **プロジェクト構成**:
   - **config**: gRPC サーバのポート（デフォルト 50051）と Netty の起動・シャットダウン。
   - **converter**: `tsurugidb.udf.*` のメッセージと Java の `LocalDate` / `LocalTime` / `LocalDateTime` / `ZonedDateTime` / `OffsetDateTime` / `Instant` の相互変換。Tsurugi の `Date`（epoch からの日数）、`LocalTime`（ナノ秒）、`LocalDatetime`（offset_seconds + nano_adjustment）、`OffsetDatetime`（UTC 秒 + オフセット分）の仕様に合わせて変換する。
-  - **service**: 生成された gRPC の Service 基底クラスを継承し、各 RPC で converter を使ってコンポーネントを取得し、`Int32Value` / `Int64Value` で返す。不正なタイムゾーン ID などは gRPC の `Status.INVALID_ARGUMENT` で返却。
+  - **service**: 生成された gRPC の Service 基底クラスを継承し、各 RPC で converter を使ってコンポーネントを取得し、`Int32Value` / `Int64Value` で返す。不正なタイムゾーン ID などは gRPC の `Status.INVALID_ARGUMENT` でエラーとして返却します。
 
 ビルドは `./gradlew clean build`、起動は `./gradlew bootRun` または `java -jar build/libs/tsurugi-udf-datetime1-*.jar` で行います。
 
 ### UDF プラグインとの連携
 
-Tsurugi 側で UDF を利用するには、本プロジェクトの .proto と `tsurugi_types.proto` を指定して `udf-plugin-builder` でプラグイン（`lib*.so` と `lib*.ini`）を生成します。`lib*.ini` の `endpoint` を、本アプリの gRPC アドレス（例: `dns:///localhost:50051`）に合わせ、生成したプラグインを Tsurugi のプラグイン配置ディレクトリに置いて Tsurugi を起動すると、SQL から UDF を呼び出せます。Tsurugi の「tsurugidb.udf 利用時は 1 本にまとめてデプロイする」という制約に従い、本サービス用の .proto と `tsurugi_types.proto` をまとめてプラグイン化します。
+Tsurugi 側で UDF を利用するには、本プロジェクトの .proto と `tsurugi_types.proto` を指定して `udf-plugin-builder` でプラグイン（`lib*.so` と `lib*.ini`）を生成します。`lib*.ini` の `endpoint` を本アプリの gRPC アドレス（例: `dns:///localhost:50051`）に合わせ、生成したプラグインを Tsurugi のプラグイン配置ディレクトリに置いて Tsurugi を起動すると、SQL から UDF を呼び出せます。Tsurugi の「tsurugidb.udf 利用時は 1 本にまとめてデプロイする」という制約に従い、本アプリ用の .proto と `tsurugi_types.proto` をまとめてプラグイン化します。
 
 ```bash
 $ udf-plugin-builder --proto-file datetime-service.proto tsurugidb/udf/tsurugi_types.proto
 ```
 
-udf-plugin-builderについては[公式のドキュメント](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-plugin_ja.md)を参考にしてください。
+udf-plugin-builder の詳細は [公式ドキュメント](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-plugin_ja.md) を参照してください。
 
 ### 結合テスト
 
@@ -123,4 +246,6 @@ Time: 1.888 ms
 
 Tsurugi の UDF は gRPC サーバを用意するだけで SQL から呼び出せるため、Spring Boot と gRPC で日付・時刻のコンポーネント取得関数を実装しました。.proto で Tsurugi の制約（レスポンス 1 フィールド、optional 非対応）に合わせ、`tsurugi_types.proto` の型を利用することで、Tsurugi と整合した UDF サーバを比較的少ない手間で構築できました。同様の手順で、他のドメインの UDF も追加しやすい構成になっています。
 
-実は週番号でGROUP BYしたくて開発したのですが、Tsurugi v1.8.0の時点ではユーザー定義集計関数（UDAF）に未対応ということで使えませんでした。開発計画はあるようなので、実装を待ちたいと思います。
+当初は週番号で `GROUP BY` したくて開発しましたが、Tsurugi v1.8.0 時点ではユーザー定義集計関数（UDAF）に未対応のため利用できませんでした。開発計画はあるようなので、実装を待ちたいと思います。
+
+現在の UDF 呼び出しには、同じ筐体内のループバック接続でも1リクエストに4～6ミリ秒程度かかるので大量操作には向いていません。それでも現状機能に制約の多い Tsurugi を利用する上では強力なツールです。引き続き作例を重ねていきます。
