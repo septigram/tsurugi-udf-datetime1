@@ -20,7 +20,7 @@ Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せない�
 
 ### Tsurugi UDF の作例
 
-今回の作例では、Tsurugi 1.8.0 時点では提供されていない DATE / TIME / TIMESTAMP / TIMESTAMP WITH TIME ZONE のコンポーネント（年・月・曜日・週番号・時・分・秒・ミリ秒など）を取り出す関数群を、Spring Boot アプリとして gRPC サーバ化しました。
+今回の作例では、Tsurugi 1.8.0 時点では提供されていない DATE / TIME / TIMESTAMP / TIMESTAMP WITH TIME ZONE のコンポーネント（年・月・日・曜日・週番号・時・分・秒・ミリ秒など）を取り出す関数群を、Spring Boot アプリとして gRPC サーバ化しました。
 
 公式のサンプルは Python で作成されていますが、Java で実装しても問題ないことを確認します。
 
@@ -32,7 +32,7 @@ Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せない�
 
 1. 要件と設計
 2. gRPC定義(proto ファイル)を作成
-3. proto ファイルを元に gRPC サーバを Spring boot で実装
+3. proto ファイルを元に gRPC サーバを Spring Boot で実装
 4. 実装した gRPC サーバを起動
 5. Tsurugi 側共有ライブラリを proto ファイルから生成
 6. Tsurugi に共有ライブラリを組み込んで起動
@@ -42,15 +42,15 @@ Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せない�
 
 要件は [doc/requirements.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/requirements.md) にまとめ、設計は [doc/design.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/design.md) に記載しています。主なポイントは次のとおりです。
 
-- **アーキテクチャ**: Tsurugi の UDF プラグインが gRPC クライアントとなり、本アプリ（gRPC サーバ）に Unary RPC でリクエストを送り、戻り値を UDF の結果として利用する。
-- **Tsurugi UDF の制約**: 各 RPC のレスポンスは「1 フィールドのみの message」にすること。`optional` が使えないため、タイムゾーン省略版と指定版は別名の RPC（例: `TimestampYear` と `TimestampYearTz`）で分ける。
-- **型**: 日付・時刻型は Tsurugi 公式の [tsurugi_types.proto](https://github.com/project-tsurugi/tsurugi-udf/blob/master/proto/tsurugidb/udf/tsurugi_types.proto) を import して利用する（`Date`, `LocalTime`, `LocalDatetime`, `OffsetDatetime` など）。
+- **アーキテクチャ**: Tsurugi の UDF プラグインが gRPC クライアントとなり、本アプリ（gRPC サーバ）に Unary RPC でリクエストを送り、戻り値を UDF の結果として利用します。
+- **Tsurugi UDF の制約**: 各 RPC のレスポンスは「1 フィールドのみの message」にします。`optional` が使えないため、タイムゾーン省略版と指定版は別名の RPC（例: `TimestampYear` と `TimestampYearTz`）で分けます。
+- **型**: 日付・時刻型は Tsurugi 公式の [tsurugi_types.proto](https://github.com/project-tsurugi/tsurugi-udf/blob/master/proto/tsurugidb/udf/tsurugi_types.proto) を import して利用します（`Date`, `LocalTime`, `LocalDatetime`, `OffsetDatetime` など）。
 
 本プロジェクトの .proto では、TIMESTAMP（デフォルト TZ）用・TIMESTAMP（タイムゾーン指定）用・TIMESTAMP WITH TIME ZONE 用・DATE 用・TIME 用の 5 系統に分け、合計 37 個の RPC を定義しています。戻り値は `Int32Value` または `Int64Value`（EPOCH ミリ秒用）でラップします。
 
 #### モジュール構成
 
-モジュールの構成はシンプルです。すべて同一筺体内で実行します。
+モジュールの構成はシンプルです。すべて同一筐体内で実行します。
 
 ![構成図](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/542190/15e04b18-33c3-4c4d-837d-ee1a4f9c00b5.png)
 
@@ -154,12 +154,12 @@ message TimeRequest {
 
 ```
 
-### 3. proto ファイルを元に gRPC サーバを Spring boot で実装
+### 3. proto ファイルを元に gRPC サーバを Spring Boot で実装
 
 - **技術スタック**: Java 17、Spring Boot 3.x、Gradle 8.x、grpc-spring-boot-starter（または grpc-java）、Protocol Buffers。
 - **プロジェクト構成**:
   - **config**: gRPC サーバのポート（デフォルト 50051）と Netty の起動・シャットダウン。
-  - **converter**: `tsurugidb.udf.*` のメッセージと Java の `LocalDate` / `LocalTime` / `LocalDateTime` / `ZonedDateTime` / `OffsetDateTime` / `Instant` の相互変換。Tsurugi の `Date`（epoch からの日数）、`LocalTime`（ナノ秒）、`LocalDatetime`（offset_seconds + nano_adjustment）、`OffsetDatetime`（UTC 秒 + オフセット分）の仕様に合わせて変換する。
+  - **converter**: `tsurugidb.udf.*` のメッセージと Java の `LocalDate` / `LocalTime` / `LocalDateTime` / `ZonedDateTime` / `OffsetDateTime` / `Instant` の相互変換。Tsurugi の `Date`（epoch からの日数）、`LocalTime`（ナノ秒）、`LocalDatetime`（offset_seconds + nano_adjustment）、`OffsetDatetime`（UTC 秒 + オフセット分）の仕様に合わせて変換します。
   - **service**: 生成された gRPC の Service 基底クラスを継承し、各 RPC で converter を使ってコンポーネントを取得し、`Int32Value` / `Int64Value` で返す。不正なタイムゾーン ID などは gRPC の `Status.INVALID_ARGUMENT` でエラーとして返却します。
 
 ### 4. 実装した gRPC サーバを起動
@@ -251,7 +251,7 @@ transaction commit(DEFAULT) finished implicitly.
 Time: 2.44 ms
 ```
 
-### DATE型から週番号を取得する
+### DATE型から曜日を取得する
 
 `DateDayOfWeek`: DATE から曜日（0=日曜〜6=土曜。2026-01-01 は木曜で 4）
 
