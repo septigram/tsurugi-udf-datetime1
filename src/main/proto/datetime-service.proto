@@ -2,6 +2,8 @@ syntax = "proto3";
 
 import "tsurugidb/udf/tsurugi_types.proto";
 
+package tsurugi_udf_datetime1;
+
 option java_package = "jp.septigram.tsurugi.udf.datetime1";
 
 // Tsurugi UDF 日時コンポーネント取得サービス
