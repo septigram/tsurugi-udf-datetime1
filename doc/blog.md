@@ -1,12 +1,12 @@
 # Tsurugi の UDF サーバを Spring Boot で作成する
 
-次世代 RDB [劔"Tsurugi"](https://www.tsurugidb.com/) は v1.8.0 で [UDF（User-Defined Function）](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-overview_ja.md) に対応しました。Tsurugi の UDF は gRPC サーバとして実装するだけで SQL から呼び出せるため、他 DBMS の UDF に比べて実装が容易です。本記事では、Tsurugi に不足している日付・時刻のコンポーネント取得関数（年・月・日・曜日・週番号・時・分・秒・ミリ秒など）を、Spring Boot と gRPC で実装した事例を紹介します。
+次世代 RDB [劔"Tsurugi"](https://www.tsurugidb.com/) は2025年12月リリースの v1.8.0 で [UDF（User-Defined Function）](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-overview_ja.md) に対応しました。Tsurugi の UDF は gRPC サーバとして実装するだけで SQL から呼び出せるため、他 DBMS の UDF に比べて実装が容易です。本記事では、Tsurugi に不足している日付・時刻のコンポーネント取得関数（年・月・日・曜日・週番号・時・分・秒・ミリ秒など）を、Spring Boot と gRPC で実装した事例を紹介します。
 
 ## 背景
 
 ### UDFとは
 
-一般に SQL の UDF は、標準の SQL 関数では対応できない計算やロジックを、ユーザーが独自に定義し SQL 文の中で再利用するための機能です。スカラー値やテーブル関数として定義でき、データクレンジングやビジネスロジックの共通化に役立ちます。
+一般にデータベースの UDF は、標準の SQL 関数では対応できない計算やロジックを、ユーザーが独自に定義し SQL 文の中で再利用するための機能です。スカラー値やテーブル関数として定義でき、データクレンジングやビジネスロジックの共通化に役立ちます。
 
 ### PostgreSQL の UDF
 
@@ -22,11 +22,15 @@ Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せない�
 
 今回の作例では、Tsurugi 1.8.0 時点では提供されていない DATE / TIME / TIMESTAMP / TIMESTAMP WITH TIME ZONE のコンポーネント（年・月・曜日・週番号・時・分・秒・ミリ秒など）を取り出す関数群を、Spring Boot アプリとして gRPC サーバ化しました。
 
+公式のサンプルは Python で作成されていますが、Java で実装しても問題ないことを確認します。
+
 ## 開発手順
 
 ### 全体の流れ
 
-1. 要件を策定
+以下の順に開発を進めます。
+
+1. 要件と設計
 2. gRPC定義(proto ファイル)を作成
 3. proto ファイルを元に gRPC サーバを Spring boot で実装
 4. 実装した gRPC サーバを起動
@@ -34,7 +38,7 @@ Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せない�
 6. Tsurugi に共有ライブラリを組み込んで起動
 7. UDF を呼び出す SQL を実行して動作確認
 
-### 要件と設計
+### 1. 要件と設計
 
 要件は [doc/requirements.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/requirements.md) にまとめ、設計は [doc/design.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/design.md) に記載しています。主なポイントは次のとおりです。
 
@@ -43,6 +47,21 @@ Tsurugi 1.8.0 で利用可能になった UDF は、複数の値を返せない�
 - **型**: 日付・時刻型は Tsurugi 公式の [tsurugi_types.proto](https://github.com/project-tsurugi/tsurugi-udf/blob/master/proto/tsurugidb/udf/tsurugi_types.proto) を import して利用する（`Date`, `LocalTime`, `LocalDatetime`, `OffsetDatetime` など）。
 
 本プロジェクトの .proto では、TIMESTAMP（デフォルト TZ）用・TIMESTAMP（タイムゾーン指定）用・TIMESTAMP WITH TIME ZONE 用・DATE 用・TIME 用の 5 系統に分け、合計 37 個の RPC を定義しています。戻り値は `Int32Value` または `Int64Value`（EPOCH ミリ秒用）でラップします。
+
+#### モジュール構成
+
+モジュールの構成はシンプルです。すべて同一筺体内で実行します。
+
+![構成図](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/542190/15e04b18-33c3-4c4d-837d-ee1a4f9c00b5.png)
+
+モジュール|説明
+-|-
+Tsurugi DB|データベース
+libdatetime-service.ini|UDF設定ファイル
+libdatetime-service.so|UDF共有ライブラリ
+tsurugi-udf-datetime1|UDFサーバ
+
+### 2. gRPC定義(proto ファイル)を作成
 
 ```proto
 syntax = "proto3";
@@ -135,21 +154,7 @@ message TimeRequest {
 
 ```
 
-
-### 構成
-
-構成は非常にシンプルです。
-
-![構成図](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/542190/15e04b18-33c3-4c4d-837d-ee1a4f9c00b5.png)
-
-モジュール|説明
--|-
-Tsurugi DB|データベース
-libdatetime-service.ini|UDF設定ファイル
-libdatetime-service.so|UDF共有ライブラリ
-tsurugi-udf-datetime1|UDFサーバ
-
-### 実装
+### 3. proto ファイルを元に gRPC サーバを Spring boot で実装
 
 - **技術スタック**: Java 17、Spring Boot 3.x、Gradle 8.x、grpc-spring-boot-starter（または grpc-java）、Protocol Buffers。
 - **プロジェクト構成**:
@@ -157,9 +162,11 @@ tsurugi-udf-datetime1|UDFサーバ
   - **converter**: `tsurugidb.udf.*` のメッセージと Java の `LocalDate` / `LocalTime` / `LocalDateTime` / `ZonedDateTime` / `OffsetDateTime` / `Instant` の相互変換。Tsurugi の `Date`（epoch からの日数）、`LocalTime`（ナノ秒）、`LocalDatetime`（offset_seconds + nano_adjustment）、`OffsetDatetime`（UTC 秒 + オフセット分）の仕様に合わせて変換する。
   - **service**: 生成された gRPC の Service 基底クラスを継承し、各 RPC で converter を使ってコンポーネントを取得し、`Int32Value` / `Int64Value` で返す。不正なタイムゾーン ID などは gRPC の `Status.INVALID_ARGUMENT` でエラーとして返却します。
 
+### 4. 実装した gRPC サーバを起動
+
 ビルドは `./gradlew clean build`、起動は `./gradlew bootRun` または `java -jar build/libs/tsurugi-udf-datetime1-*.jar` で行います。
 
-### UDF プラグインとの連携
+### 5. Tsurugi 側共有ライブラリを proto ファイルから生成
 
 Tsurugi 側で UDF を利用するには、本プロジェクトの .proto と `tsurugi_types.proto` を指定して `udf-plugin-builder` でプラグイン（`lib*.so` と `lib*.ini`）を生成します。`lib*.ini` の `endpoint` を本アプリの gRPC アドレス（例: `dns:///localhost:50051`）に合わせ、生成したプラグインを Tsurugi のプラグイン配置ディレクトリに置いて Tsurugi を起動すると、SQL から UDF を呼び出せます。Tsurugi の「tsurugidb.udf 利用時は 1 本にまとめてデプロイする」という制約に従い、本アプリ用の .proto と `tsurugi_types.proto` をまとめてプラグイン化します。
 
@@ -167,17 +174,29 @@ Tsurugi 側で UDF を利用するには、本プロジェクトの .proto と `
 $ udf-plugin-builder --proto-file datetime-service.proto tsurugidb/udf/tsurugi_types.proto
 ```
 
-udf-plugin-builder の詳細は [公式ドキュメント](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-plugin_ja.md) を参照してください。
+udf-plugin-builder を実行する環境の詳細は [公式ドキュメント](https://github.com/project-tsurugi/tsurugi-udf/blob/master/docs/udf-plugin_ja.md) を参照してください。
 
-### 結合テスト
+### 6. Tsurugi に共有ライブラリを組み込んで起動
+
+生成したプラグイン（`lib*.so` と `lib*.ini`）を `$TSURUGI_HOME/var/plugins/` （デフォルトの場合）に配置して、Tsurugi を起動します。
+
+```bash
+$ tgctl start
+```
+
+### 7. UDF を呼び出す SQL を実行して動作確認
 
 gRPC サーバの起動確認に加え、udf-plugin を Tsurugi にデプロイし、tgsql から全 37 UDF を実行して期待値と一致することを [doc/test-result.md](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/test-result.md) のとおり確認しました。全呼び出し例は [doc/test-all.sql](https://github.com/septigram/tsurugi-udf-datetime1/blob/main/doc/test-all.sql) にあります。
 
 ## 利用例
 
-tgsql で UDF を呼び出す例です。`FROM` 句にテーブル（ここでは `t1`）が必要です。
+tgsql で UDF を呼び出す例です。Tsurugi の SQL では `FROM` 句が省略できないため、テーブル名（ここでは `t1`）が必要です。
 
-```
+### TIMESTAMP型から年を取得する
+
+`TimestampYear`: TIMESTAMP から年（システムデフォルト TZ で解釈）
+
+```sql
 SELECT TimestampYear(TIMESTAMP '2026-01-01 12:34:56') FROM t1
 start transaction implicitly. option=[
   type: OCC
@@ -190,7 +209,34 @@ Time: 1.068 ms
 Time: 6.507 ms
 transaction commit(DEFAULT) finished implicitly.
 Time: 3.361 ms
+```
 
+### TIMESTAMP型からタイムゾーンを指定して時間を取得する
+
+`TimestampHourTz`: TIMESTAMP から時（タイムゾーン指定）
+
+タイムゾーンを指定する場合は `TimestampHourTz(TIMESTAMP '2026-01-01 12:34:56', 'Asia/Tokyo')` のように第 2 引数で指定します。
+
+```sql
+SELECT TimestampHourTz(TIMESTAMP '2026-01-01 12:34:56', 'Asia/Tokyo') FROM t1
+start transaction implicitly. option=[
+  type: OCC
+  label: "tgsql-implicit-transaction2026-02-13 11:54:51.498+09:00"
+]
+Time: 0.828 ms
+[@#0: INT]
+[12]
+(1 row)
+Time: 6.843 ms
+transaction commit(DEFAULT) finished implicitly.
+Time: 3.761 ms
+```
+
+### TIMESTAMP WITH TIME ZONE型から秒を取得する
+
+`OffsetTimestampSecond`: TIMESTAMP WITH TIME ZONE から秒
+
+```sql
 SELECT OffsetTimestampSecond(TIMESTAMP WITH TIME ZONE '2026-01-01 12:34:56+09:00') FROM t1
 start transaction implicitly. option=[
   type: OCC
@@ -203,7 +249,13 @@ Time: 0.501 ms
 Time: 3.944 ms
 transaction commit(DEFAULT) finished implicitly.
 Time: 2.44 ms
+```
 
+### DATE型から週番号を取得する
+
+`DateDayOfWeek`: DATE から曜日（0=日曜〜6=土曜。2026-01-01 は木曜で 4）
+
+```sql
 SELECT DateDayOfWeek(DATE '2026-01-01') FROM t1
 start transaction implicitly. option=[
   type: OCC
@@ -216,7 +268,13 @@ Time: 0.528 ms
 Time: 4.345 ms
 transaction commit(DEFAULT) finished implicitly.
 Time: 2.264 ms
+```
 
+### TIME型からミリ秒を取得する
+
+`TimeMillisecond`: TIME からミリ秒
+
+```sql
 SELECT TimeMillisecond(TIME '12:34:56.789') FROM t1
 start transaction implicitly. option=[
   type: OCC
@@ -231,16 +289,9 @@ transaction commit(DEFAULT) finished implicitly.
 Time: 1.888 ms
 ```
 
-- `TimestampYear`: TIMESTAMP から年（システムデフォルト TZ で解釈）。
-- `OffsetTimestampSecond`: TIMESTAMP WITH TIME ZONE から秒。
-- `DateDayOfWeek`: DATE から曜日（0=日曜〜6=土曜。2026-01-01 は木曜で 4）。
-- `TimeMillisecond`: TIME からミリ秒。
-
-タイムゾーンを指定する場合は `TimestampYearTz(TIMESTAMP '2026-01-01 12:34:56', 'Asia/Tokyo')` のように第 2 引数で指定します。
-
 ## 成果物
 
-- [リポジトリ](https://github.com/septigram/tsurugi-udf-datetime1)
+- https://github.com/septigram/tsurugi-udf-datetime1
 
 ## まとめ
 
