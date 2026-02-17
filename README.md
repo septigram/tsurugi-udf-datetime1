@@ -95,4 +95,7 @@ gRPC サーバはデフォルトでポート **50051** でリッスンします�
 - **設計書**: [doc/design.md](doc/design.md)（アーキテクチャ、データ変換ロジック、プロジェクト構成）
 - **結合テスト**: [doc/test-all.sql](doc/test-all.sql)、[doc/test-result.md](doc/test-result.md)
 
+## ライセンス
+
+本プロジェクトは Apache License 2.0 の下で提供されます。詳細は [LICENSE](LICENSE) を参照してください。
 
